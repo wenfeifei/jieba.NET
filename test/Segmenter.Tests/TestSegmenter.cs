@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using JiebaNet.Segmenter.Common;
 using NUnit.Framework;
 
@@ -12,7 +13,7 @@ namespace JiebaNet.Segmenter.Tests
     {
         private string[] GetTestSentences()
         {
-            return File.ReadAllLines(@"Cases\jieba_test.txt");
+            return File.ReadAllLines(TestHelper.GetCaseFilePath("jieba_test.txt"));
         }
 
         [TestCase]
@@ -75,31 +76,31 @@ namespace JiebaNet.Segmenter.Tests
         [TestCase]
         public void TestCut()
         {
-            TestCutFunction((new JiebaSegmenter()).Cut, false, true, @"Cases\accurate_hmm.txt");
+            TestCutFunction((new JiebaSegmenter()).Cut, false, true, TestHelper.GetCaseFilePath("accurate_hmm.txt"));
         }
 
         [TestCase]
         public void TestCutAll()
         {
-            TestCutFunction((new JiebaSegmenter()).Cut, true, false, @"Cases\cut_all.txt");
+            TestCutFunction((new JiebaSegmenter()).Cut, true, false, TestHelper.GetCaseFilePath("cut_all.txt"));
         }
 
         [TestCase]
         public void TestCutWithoutHmm()
         {
-            TestCutFunction((new JiebaSegmenter()).Cut, false, false, @"Cases\accurate_no_hmm.txt");
+            TestCutFunction((new JiebaSegmenter()).Cut, false, false, TestHelper.GetCaseFilePath("accurate_no_hmm.txt"));
         }
 
         [TestCase]
         public void TestCutForSearch()
         {
-            TestCutSearchFunction((new JiebaSegmenter()).CutForSearch, true, @"Cases\cut_search_hmm.txt");
+            TestCutSearchFunction((new JiebaSegmenter()).CutForSearch, true, TestHelper.GetCaseFilePath("cut_search_hmm.txt"));
         }
 
         [TestCase]
         public void TestCutForSearchWithoutHmm()
         {
-            TestCutSearchFunction((new JiebaSegmenter()).CutForSearch, false, @"Cases\cut_search_no_hmm.txt");
+            TestCutSearchFunction((new JiebaSegmenter()).CutForSearch, false, TestHelper.GetCaseFilePath("cut_search_no_hmm.txt"));
         }
 
         #endregion
@@ -196,7 +197,7 @@ namespace JiebaNet.Segmenter.Tests
                 Console.WriteLine(segment);
             }
 
-            seg.LoadUserDict(@"Resources\user_dict.txt");
+            seg.LoadUserDict(TestHelper.GetResourceFilePath("user_dict.txt"));
             s = "Steve Jobs重新定义了手机";
             segments = seg.Cut(s);
             foreach (var segment in segments)
@@ -213,34 +214,21 @@ namespace JiebaNet.Segmenter.Tests
         }
 
         [TestCase]
-        [Ignore("")]
         public void TestCutAllSpecialWords()
         {
-            // TODO: Enable this test case after confirming with jieba py.
             var seg = new JiebaSegmenter();
             seg.AddWord(".NET");
             seg.AddWord("U.S.A.");
             seg.AddWord("Steve Jobs");
-            seg.AddWord("Mac OS X");
 
             var s = ".NET平台是微软推出的, U.S.A.是美国的简写";
-            var segments = seg.Cut(s);
-            Console.WriteLine("Cut: {0}", string.Join("/ ", segments));
-            segments = seg.Cut(s, cutAll: true);
-            Console.WriteLine("Cut All: {0}", string.Join("/ ", segments));
+            var segments = seg.Cut(s).ToList();
+            Assert.That(segments,   Contains.Item(".NET"));
+            Assert.That(segments,   Contains.Item("U.S.A."));
 
             s = "Steve Jobs重新定义了手机";
-            segments = seg.Cut(s);
-            Console.WriteLine("Cut: {0}", string.Join("/ ", segments));
-            segments = seg.Cut(s, cutAll: true);
-            Console.WriteLine("Cut All: {0}", string.Join("/ ", segments));
-
-            s = "我们所熟悉的一个版本是Mac OS X 10.11 EI Capitan，在2015年推出。";
-
-            segments = seg.Cut(s);
-            Console.WriteLine("Cut: {0}", string.Join("/ ", segments));
-            segments = seg.Cut(s, cutAll: true);
-            Console.WriteLine("Cut All: {0}", string.Join("/ ", segments));
+            segments = seg.Cut(s).ToList();
+            Assert.That(segments,   Has.No.Member("Steve Jobs"));
         }
 
         [TestCase]
@@ -253,7 +241,7 @@ namespace JiebaNet.Segmenter.Tests
         [TestCase]
         public void TestUserDict()
         {
-            var dict = @"Resources\user_dict.txt";
+            var dict = TestHelper.GetResourceFilePath("user_dict.txt");
             var seg = new JiebaSegmenter();
 
             TestCutThenPrint(seg, "小明最近在学习机器学习、自然语言处理、云计算和大数据");
@@ -293,6 +281,81 @@ namespace JiebaNet.Segmenter.Tests
             segments = seg.Cut(s);
             Assert.That(segments, Contains.Item("3.14"));
             Assert.That(segments, Contains.Item("99.99%"));
+        }
+
+        [TestCase]
+        public void TestHyphen()
+        {
+            var seg = new JiebaSegmenter();
+            seg.AddWord("cet-4");
+
+            var s = "你一定也考过cet-4了。";
+            var segments = seg.Cut(s).ToList();
+            Assert.That(segments, Contains.Item("cet-4"));
+            Console.WriteLine(segments);
+            foreach (var sm in segments)
+            {
+                Console.WriteLine(sm);
+            }
+        }
+
+        [TestCase]
+        [Category("Issue")]
+        public void TestChineseDot()
+        {
+            // for #42, #43
+            var seg = new JiebaSegmenter();
+            seg.AddWord("艾尔肯·吐尼亚孜");
+            seg.AddWord("短P-R间期");
+
+            var s = "艾尔肯·吐尼亚孜新疆阿克苏人。 在短P-R间期。";
+            var segments = seg.Cut(s).ToList();
+            Assert.That(segments, Contains.Item("艾尔肯·吐尼亚孜"));
+            Assert.That(segments, Contains.Item("短P-R间期"));
+        }
+
+        [TestCase]
+        [Category("Issue")]
+        public void TestIssue49()
+        {
+            // for #49
+            var seg = new JiebaSegmenter();
+
+            var s = "简历名称 JAVA后端";
+            var segments = seg.Cut(s);
+            Assert.That(segments.Count(), Is.EqualTo(5));
+
+            s = "简历名称JAVA后端";
+            segments = seg.Cut(s);
+            Assert.That(segments.Count(), Is.EqualTo(4));
+        }
+
+        [TestCase]
+        public void TestCutAllMixedZhEn()
+        {
+            var seg = new JiebaSegmenter();
+            seg.AddWord("超敏C反应蛋白");
+
+            var s = "很多人的第一门语言是C语言。超敏C反应蛋白是什么？";
+            var segments = seg.CutAll(s).ToList();
+            Assert.That(segments, Contains.Item("C语言"));
+            Console.WriteLine(segments);
+            foreach (var sm in segments)
+            {
+                Console.WriteLine(sm);
+            }
+        }
+
+        [TestCase]
+        [Category("Issue")]
+        public void TestIssue46()
+        {
+            var seg = new JiebaSegmenter();
+            seg.DeleteWord("天半");
+            
+            var segments = seg.CutAll("2天半").ToList();
+            Assert.That(segments, Contains.Item("天"));
+            Assert.That(segments, Contains.Item("半"));
         }
 
         [TestCase]
